@@ -1,0 +1,137 @@
+---
+title: "amazon employee access"
+author: "J U L I A"
+format: html
+editor: visual
+---
+
+16283
+
+```{r}
+library(vroom)
+library(tidyverse)
+library(tidymodels)
+library(embed)
+library(keras)
+
+amazontrain <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/train.csv")
+amazontrain <- amazontrain %>% mutate(ACTION = factor(ACTION))
+
+amazontest <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/test.csv")
+
+```
+
+convert to factors and make recipe
+
+```{r}
+
+id_cols <- c("RESOURCE","MGR_ID","ROLE_ROLLUP_1","ROLE_ROLLUP_2",
+             "ROLE_DEPTNAME","ROLE_TITLE","ROLE_FAMILY_DESC",
+             "ROLE_FAMILY","ROLE_CODE")
+
+amazontrain <- amazontrain %>% mutate(across(all_of(id_cols), as.factor))
+amazontest  <- amazontest  %>% mutate(across(all_of(id_cols), as.factor))
+
+
+NNrecipe <- recipe(ACTION ~ ., data = amazontrain) %>%
+  update_role(ROLE_CODE, new_role = "id") %>%
+  step_zv(all_predictors()) %>%                  # remove zero-variance cols
+  step_other(all_nominal_predictors(), threshold = 0.01) %>%
+  step_unknown(all_nominal_predictors()) %>%
+  step_lencode_mixed(all_nominal_predictors(), outcome = vars(ACTION)) %>%
+  step_range(all_numeric_predictors(), min = 0, max = 1)
+
+
+```
+
+```{r}
+nn_model <- mlp(hidden_units = tune(), penalty = tune()) %>%
+  set_engine("nnet") %>%
+  set_mode("classification")
+
+```
+
+```{r}
+nn_wf <- workflow() %>%
+  add_model(nn_model) %>%
+  add_recipe(NNrecipe)
+
+
+folds <- vfold_cv(amazontrain, v = 5, strata = ACTION)
+```
+
+```{r}
+tuning_grid <- grid_regular(hidden_units(), penalty(), levels = 5)
+
+CV_results %>%
+  collect_metrics() %>%
+  filter(.metric == "accuracy") %>%
+  ggplot(aes(x = hidden_units, y = mean, group = penalty, color = factor(penalty))) +
+  geom_line() +
+  geom_point() +
+  theme_minimal()
+
+
+
+collect_metrics(CV_results)
+
+best_params <- select_best(CV_results, metric = "roc_auc")
+
+
+```
+
+
+```{r}
+
+final_wf <- nn_wf %>%
+  finalize_workflow(best_params) %>%
+  fit(data = amazontrain)
+```
+
+```{r}
+
+preds <- predict(final_wf, new_data=amazontest, type = "prob") %>% 
+  rename(ACTION=.pred_1)
+```
+
+```{r}
+results <- tibble(id = amazontest$id, ACTION = preds$ACTION)
+
+vroom_write(results, 
+            "C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/nnresults.csv",
+            delim = ",")
+
+```
+
+```{r}
+# Run the grid search first
+tuning_grid <- grid_regular(
+  hidden_units(range = c(1, 20)),  # pick maxHiddenUnits = 20
+  penalty(),
+  levels = 5
+)
+
+
+CV_results <- tune_grid(
+  nn_wf,
+  resamples = folds,
+  grid = tuning_grid,
+  metrics = metric_set(accuracy, roc_auc)
+)
+
+CV_results %>%
+  collect_metrics() %>%
+  filter(.metric == "accuracy") %>%
+  ggplot(aes(x = hidden_units, y = mean)) +
+  geom_line() +
+  geom_point() +
+  theme_minimal() +
+  labs(
+    x = "Number of Hidden Units",
+    y = "Mean Accuracy",
+    title = "CV Accuracy vs Hidden Units"
+  )
+
+
+```
+

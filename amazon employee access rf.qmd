@@ -1,0 +1,93 @@
+---
+title: "amazon employee access"
+author: "J U L I A"
+format: html
+editor: visual
+---
+
+```{r}
+library(vroom)
+library(lubridate)
+library(tidyverse)
+library(tidymodels)
+library(recipes)
+library(embed)
+library(dials)
+
+amazontrain <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/train.csv")
+amazontrain <- amazontrain %>% mutate(ACTION = factor(ACTION))
+
+amazontest <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/test.csv")
+
+```
+
+convert to factors and make recipe
+
+```{r}
+
+
+amazonrecipetrain <- recipe(ACTION ~ ., data = amazontrain) %>%
+  step_mutate_at(all_numeric_predictors(), fn=factor) %>%
+  step_other(all_nominal_predictors(), threshold = 0.001) %>% 
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors()) 
+
+
+baked_train <- bake(prep(amazonrecipetrain), amazontrain)
+```
+
+```{r}
+amazon_log_model <- rand_forest(
+  mtry = tune(),
+  min_n = tune(),
+  trees = 500
+) %>%
+  set_engine("ranger") %>%
+  set_mode("classification")
+```
+
+```{r}
+amazon_wf <- workflow() %>%
+  add_recipe(amazonrecipetrain) %>%
+  add_model(amazon_log_model)
+```
+
+```{r}
+
+folds <- vfold_cv(amazontrain, v = 5) # higher is maybe better but slow 10ish
+
+tune_params <- extract_parameter_set_dials(amazon_wf) %>%
+  finalize(amazontrain)
+
+tuning_grid <- grid_regular(tune_params, levels = 5)
+
+CV_results <- tune_grid(
+  amazon_wf,
+  resamples = folds,
+  grid = tuning_grid,
+  metrics = metric_set(roc_auc)
+)
+```
+
+```{r}
+best_params <- select_best(CV_results, metric="roc_auc")
+
+final_wf <- amazon_wf %>% 
+  finalize_workflow(best_params) %>% 
+  fit(data=amazontrain)
+```
+
+```{r}
+
+preds <- predict(final_wf, new_data=amazontest, type = "prob") %>% 
+  rename(ACTION=.pred_1)
+```
+
+```{r}
+results <- tibble(id = amazontest$id, ACTION = preds$ACTION)
+
+vroom_write(results, 
+            "C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/rfresults.csv",
+            delim = ",")
+
+```

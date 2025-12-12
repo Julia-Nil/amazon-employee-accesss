@@ -1,0 +1,166 @@
+---
+title: "amazon employee access"
+author: "J U L I A"
+format: html
+editor: visual
+---
+
+## EDA
+
+```{r}
+library(vroom)
+library(lubridate)
+library(tidyverse)
+library(patchwork)
+library(tidymodels)
+library(recipes)
+
+amazontrain <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/train.csv")
+
+amazontest <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/test.csv")
+
+```
+
+convert to factors and make recipe
+
+```{r}
+amazontrain <- amazontrain %>%
+  mutate_if(is.character, as.factor) %>%   # convert text to factors
+  mutate_if(is.numeric, as.factor)         # convert IDs to factors if they’re really categories
+
+amazontest <- amazontest %>%
+  mutate_if(is.character, as.factor) %>%   # convert text to factors
+  mutate_if(is.numeric, as.factor)
+
+
+
+amazonrecipetrain <- recipe(ACTION ~., data = amazontrain) %>% 
+  step_other(all_nominal_predictors(), threshold = .001) %>% 
+  step_dummy(all_nominal_predictors())
+
+amazonrecipetest <- recipe(~., data = amazontest) %>% 
+  step_other(all_nominal_predictors(), threshold = .001) %>% 
+  step_dummy(all_nominal_predictors())
+
+```
+
+actually transform the data
+
+```{r}
+prep_recipe <- prep(amazonrecipetrain)
+train_amazon_prepped <- bake(prep_recipe, new_data = NULL)
+test_amazon_prepped  <- bake(prep_recipe, new_data = amazontest)
+
+```
+
+count columns
+
+```{r}
+ncol(train_amazon_prepped)
+```
+
+```{r}
+log_reg_amazon <- glm(ACTION ~ ., data = train_amazon_prepped, family=binomial())
+```
+
+```{r}
+preds <- predict(log_reg_amazon, test_amazon_prepped, type = "response")
+head(preds)
+
+```
+SAve
+```{r}
+results <- data.frame(
+  id = amazontest$id,
+  ACTION = preds  # rename to match expected submission format
+)
+
+vroom_write(
+  x = results,
+  file = "C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/results.csv",
+  delim = ","
+)
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+1050 columns

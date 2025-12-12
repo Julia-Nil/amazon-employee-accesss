@@ -1,0 +1,191 @@
+---
+title: "amazon employee access"
+author: "J U L I A"
+format: html
+editor: visual
+---
+
+## EDA
+
+```{r}
+library(vroom)
+library(lubridate)
+library(tidyverse)
+library(patchwork)
+library(tidymodels)
+library(recipes)
+
+amazontrain <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/train.csv")
+
+amazontest <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/test.csv")
+
+```
+
+```{r}
+counts <- table(amazontrain$ROLE_FAMILY)
+pie(counts,
+    main = "Role Family Distribution",
+    col = rainbow(length(counts)))
+
+counts_sorted <- sort(counts, decreasing = TRUE)
+top_counts <- head(counts_sorted, 5)
+pie(top_counts,
+    main = "Top 5 Role Families",
+    labels = names(top_counts),
+    col = rainbow(5))
+
+barplot(counts_sorted[1:10],
+        main = "Top 10 Role Families",
+        col = rainbow(10),
+        las = 2)
+
+```
+
+```{r}
+counts <- table(amazontrain$ROLE_TITLE)
+pie(counts,
+    main = "Role Family Distribution",
+    col = rainbow(length(counts)))
+
+counts_sorted <- sort(counts, decreasing = TRUE)
+top_counts <- head(counts_sorted, 5)
+pie(top_counts,
+    main = "Top 5 Role Titles",
+    labels = names(top_counts),
+    col = rainbow(5))
+
+barplot(counts_sorted[1:10],
+        main = "Top 10 Role Titles",
+        col = rainbow(10),
+        las = 2)
+
+```
+
+convert to factors and make recipe
+
+```{r}
+amazontrain <- amazontrain %>%
+  mutate_if(is.character, as.factor) %>%   # convert text to factors
+  mutate_if(is.numeric, as.factor)         # convert IDs to factors if they’re really categories
+
+
+amazonrecipetrain <- recipe(ACTION ~., data = amazontrain) %>% 
+  step_other(all_nominal_predictors(), threshold = .01) %>% 
+  step_dummy(all_nominal_predictors())
+
+amazonrecipetest <- recipe(~., data = amazontest) %>% 
+  step_other(all_nominal_predictors(), threshold = .01) %>% 
+  step_dummy(all_nominal_predictors())
+
+```
+
+actually transform the data
+
+```{r}
+train_amazon_prepped <- prep(amazonrecipetrain) %>%
+  bake(new_data=NULL)
+
+test_amazon_prepped <- prep(amazonrecipetest) %>% 
+  bake(new_data=NULL)
+```
+
+count columns
+
+```{r}
+ncol(train_amazon_prepped)
+```
+```{r}
+log_reg_amazon <- glm(ACTION ~ ., data = train_amazon_prepped, family=binomial())
+```
+
+```{r}
+preds <- predict(log_reg_amazon, amazontest, type = "prob")
+head(preds)
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+1050 columns

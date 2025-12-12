@@ -1,0 +1,96 @@
+---
+title: "amazon employee access"
+author: "J U L I A"
+format: html
+editor: visual
+---
+
+```{r}
+library(vroom)
+library(lubridate)
+library(tidyverse)
+library(tidymodels)
+library(recipes)
+library(embed)
+library(dials)
+
+
+amazontrain <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/train.csv")
+amazontrain <- amazontrain %>% mutate(ACTION = factor(ACTION))
+
+amazontest <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/test.csv")
+
+```
+
+convert to factors and make recipe
+
+```{r}
+
+
+amazonrecipetrain <- recipe(ACTION ~ ., data = amazontrain) %>%
+  step_mutate_at(all_numeric_predictors(), fn=factor) %>%
+  step_other(all_nominal_predictors(), threshold = 0.1) %>% 
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors()) 
+
+
+baked_train <- bake(prep(amazonrecipetrain), amazontrain)
+```
+
+```{r}
+amazon_radial_svm_model <- svm_rbf(
+  cost = tune(),
+  rbf_sigma = tune()
+) %>%
+  set_engine("kernlab") %>%
+  set_mode("classification")
+```
+
+```{r}
+amazon_wf <- workflow() %>%
+  add_recipe(amazonrecipetrain) %>%
+  add_model(amazon_radial_svm_model)
+```
+
+```{r}
+
+folds <- vfold_cv(amazontrain, v = 5, strata=ACTION) # higher is maybe better but slow 10ish
+
+# Define tuning grid for cost and rbf_sigma
+tuning_grid <- grid_regular(
+  cost(range = c(-3, 3)),        # 10^-3 to 10^3 on log scale
+  rbf_sigma(range = c(-3, 3)),
+  levels = 5
+)
+
+# Run cross-validation
+CV_results <- tune_grid(
+  amazon_wf,
+  resamples = folds,
+  grid = tuning_grid,
+  metrics = metric_set(roc_auc)
+)
+```
+
+```{r}
+best_params <- select_best(CV_results, metric="roc_auc")
+
+final_wf <- amazon_wf %>% 
+  finalize_workflow(best_params) %>% 
+  fit(data=amazontrain)
+```
+
+```{r}
+
+preds <- predict(final_wf, new_data=amazontest, type = "prob") %>% 
+  rename(ACTION=.pred_1)
+```
+
+```{r}
+results <- tibble(id = amazontest$id, ACTION = preds$ACTION)
+
+vroom_write(results, 
+            "C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/radialsvmresults.csv",
+            delim = ",")
+
+```

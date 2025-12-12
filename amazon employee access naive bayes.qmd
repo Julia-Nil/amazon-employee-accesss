@@ -1,0 +1,87 @@
+---
+title: "amazon employee access"
+author: "J U L I A"
+format: html
+editor: visual
+---
+
+```{r}
+library(vroom)
+library(lubridate)
+library(tidyverse)
+library(tidymodels)
+library(recipes)
+library(embed)
+library(dials)
+library(kknn)
+library(discrim)
+
+amazontrain <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/train.csv")
+amazontrain <- amazontrain %>% mutate(ACTION = factor(ACTION))
+
+amazontest <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/test.csv")
+
+```
+
+convert to factors and make recipe
+
+```{r}
+
+amazonrecipetrain <- recipe(ACTION ~ ., data = amazontrain) %>%
+  step_mutate_at(all_numeric_predictors(), fn=factor) %>%
+  step_other(all_nominal_predictors(), threshold = 0.1) %>% 
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+baked_train <- bake(prep(amazonrecipetrain), amazontrain)
+
+```
+
+```{r}
+amazon_nb_model <- naive_Bayes(Laplace=tune(), smoothness=tune()) %>% 
+  set_mode("classification") %>% 
+  set_engine("naivebayes")
+```
+
+```{r}
+nb_wf <- workflow() %>%
+  add_recipe(amazonrecipetrain) %>%
+  add_model(amazon_nb_model)
+```
+
+```{r}
+folds <- vfold_cv(amazontrain, v=5)
+tuning_grid <- grid_regular(Laplace(), smoothness(), levels=5)
+
+CV_results <- tune_grid(
+  nb_wf,
+  resamples = folds,
+  grid = tuning_grid,
+  metrics = metric_set(roc_auc)
+)
+
+best_params <- select_best(CV_results, metric="roc_auc")
+
+```
+
+```{r}
+
+final_wf <- nb_wf %>% 
+  finalize_workflow(best_params) %>% 
+  fit(data=amazontrain)
+```
+
+```{r}
+
+preds <- predict(final_wf, new_data=amazontest, type = "prob") %>% 
+  rename(ACTION=.pred_1)
+```
+
+```{r}
+results <- tibble(id = amazontest$id, ACTION = preds$ACTION)
+
+vroom_write(results, 
+            "C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/nbresults.csv",
+            delim = ",")
+
+```

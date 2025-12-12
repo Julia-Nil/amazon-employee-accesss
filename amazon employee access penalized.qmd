@@ -1,0 +1,89 @@
+---
+title: "amazon employee access"
+author: "J U L I A"
+format: html
+editor: visual
+---
+
+```{r}
+library(vroom)
+library(lubridate)
+library(tidyverse)
+library(tidymodels)
+library(recipes)
+library(embed)
+
+amazontrain <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/train.csv")
+amazontrain <- amazontrain %>% mutate(ACTION = factor(ACTION))
+
+amazontest <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/test.csv")
+
+```
+
+convert to factors and make recipe
+
+```{r}
+
+id_cols <- c("RESOURCE","MGR_ID","ROLE_ROLLUP_1","ROLE_ROLLUP_2",
+             "ROLE_DEPTNAME","ROLE_TITLE","ROLE_FAMILY_DESC",
+             "ROLE_FAMILY","ROLE_CODE")
+
+amazontrain <- amazontrain %>% mutate(across(all_of(id_cols), as.factor))
+amazontest  <- amazontest  %>% mutate(across(all_of(id_cols), as.factor))
+
+amazontrain <- amazontrain %>%
+  mutate_if(is.character, as.factor) %>%   # convert text to factors
+  mutate_if(is.numeric, as.factor)         # convert IDs to factors if they’re really categories
+
+amazonrecipetrain <- recipe(ACTION ~ ., data = amazontrain) %>%
+  step_other(all_nominal_predictors(), threshold = 0.01) %>% 
+  step_unknown(all_nominal_predictors()) %>%        # handles unseen test levels
+  step_lencode_mixed(all_nominal_predictors(), outcome = vars(ACTION))
+
+```
+
+```{r}
+amazon_log_model <- logistic_reg(mixture=tune(), penalty = tune()) %>% 
+  set_engine("glmnet")
+```
+
+```{r}
+amazon_wf <- workflow() %>% 
+  add_recipe(amazonrecipetrain) %>% 
+  add_model(amazon_log_model)
+```
+
+```{r}
+folds <- vfold_cv(amazontrain, v=5)
+tuning_grid <- grid_regular(penalty(), mixture(), levels=5)
+
+CV_results <- tune_grid(
+  amazon_wf,
+  resamples = folds,
+  grid = tuning_grid,
+  metrics = metric_set(roc_auc)
+)
+```
+
+```{r}
+best_params <- select_best(CV_results, metric="roc_auc")
+
+final_wf <- amazon_wf %>% 
+  finalize_workflow(best_params) %>% 
+  fit(data=amazontrain)
+```
+
+```{r}
+
+preds <- predict(final_wf, new_data=amazontest, type = "prob") %>% 
+  rename(ACTION=.pred_1)
+```
+
+```{r}
+results <- tibble(id = test$id, ACTION = preds$ACTION)
+
+vroom_write(results, 
+            "C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/results.csv",
+            delim = ",")
+
+```

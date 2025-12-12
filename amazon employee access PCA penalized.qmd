@@ -1,0 +1,83 @@
+---
+title: "amazon employee access"
+author: "J U L I A"
+format: html
+editor: visual
+---
+
+```{r}
+library(vroom)
+library(lubridate)
+library(tidyverse)
+library(tidymodels)
+library(recipes)
+library(embed)
+
+amazontrain <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/train.csv")
+amazontrain <- amazontrain %>% mutate(ACTION = factor(ACTION))
+
+amazontest <- vroom("C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/amazon-employee-access-challenge/test.csv")
+
+```
+
+convert to factors and make recipe
+
+```{r}
+
+amazonrecipetrain <- recipe(ACTION ~ ., data = amazontrain) %>%
+  step_other(all_nominal_predictors(), threshold = 0.1) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors(), threshold = 0.9)
+
+
+
+baked_train <- bake(prep(amazonrecipetrain), amazontrain)
+
+```
+
+```{r}
+amazon_log_model <- logistic_reg(mixture=tune(), penalty = tune()) %>% 
+  set_engine("glmnet")
+```
+
+```{r}
+amazon_wf <- workflow() %>% 
+  add_recipe(amazonrecipetrain) %>% 
+  add_model(amazon_log_model)
+```
+
+```{r}
+folds <- vfold_cv(amazontrain, v=5)
+tuning_grid <- grid_regular(penalty(), mixture(), levels=5)
+
+CV_results <- tune_grid(
+  amazon_wf,
+  resamples = folds,
+  grid = tuning_grid,
+  metrics = metric_set(roc_auc)
+)
+```
+
+```{r}
+best_params <- select_best(CV_results, metric="roc_auc")
+
+final_wf <- amazon_wf %>% 
+  finalize_workflow(best_params) %>% 
+  fit(data=amazontrain)
+```
+
+```{r}
+
+preds <- predict(final_wf, new_data=amazontest, type = "prob") %>% 
+  rename(ACTION=.pred_1)
+```
+
+```{r}
+results <- tibble(id = amazontest$id, ACTION = preds$ACTION)
+
+vroom_write(results, 
+            "C:/Users/julia/OneDrive - Brigham Young University/Desktop/stat 348/amazon-employee-access/pcapenresults.csv",
+            delim = ",")
+
+```
